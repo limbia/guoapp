@@ -155,6 +155,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     doubleTapSeekSeconds: widget.store.playbackPreferences.doubleTapSeekSeconds,
     longPressSpeed: widget.store.playbackPreferences.longPressSpeed,
     autoLongPressSpeed: widget.store.playbackPreferences.autoLongPressSpeed,
+    keepSpeedLockAcrossEpisodes:
+        widget.store.playbackPreferences.keepSpeedLockAcrossEpisodes,
   );
   String get _qualityLabel => _plan?.local == true
       ? '本地原画'
@@ -242,6 +244,8 @@ class _PlayerScreenState extends State<PlayerScreen>
         longPressSpeed: widget.store.playbackPreferences.longPressSpeed,
         autoLongPressSpeed:
             widget.store.playbackPreferences.autoLongPressSpeed,
+        keepSpeedLockAcrossEpisodes:
+            widget.store.playbackPreferences.keepSpeedLockAcrossEpisodes,
       ),
       onEpisode: (direction) {
         final next = _index + direction;
@@ -1047,7 +1051,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         _enhancement.mediaReady();
         _attachLanPlayback();
         _health.reset();
-        await _interactions.applySpeed();
+        await _interactions.applySpeedAfterEpisodeSwitch();
         if (mounted && !_closed && ticket == _generation) {
           setState(() {
             _loading = false;
@@ -1194,6 +1198,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         dragSeekSeconds: stored.dragSeekSeconds,
         longPressSpeed: stored.longPressSpeed,
         autoLongPressSpeed: stored.autoLongPressSpeed,
+        keepSpeedLockAcrossEpisodes: stored.keepSpeedLockAcrossEpisodes,
       ),
     );
     setState(() {
@@ -1713,6 +1718,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                   widget.store.playbackPreferences.longPressSpeed,
               autoLongPressSpeed:
                   widget.store.playbackPreferences.autoLongPressSpeed,
+              keepSpeedLockAcrossEpisodes:
+                  widget.store.playbackPreferences.keepSpeedLockAcrossEpisodes,
             ),
             fitType: _fitType,
             onFitType: () => _openPanel(PlayerMenuSection.fit),

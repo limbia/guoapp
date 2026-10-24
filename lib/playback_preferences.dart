@@ -39,6 +39,8 @@ class PlaybackPreferences {
     this.dragSeekSeconds = 60,
     this.longPressSpeed = 3.0,
     this.autoLongPressSpeed = false,
+    this.keepSpeedLockAcrossEpisodes = true,
+    this.saveCatalogProgress = true,
     this.gestureSchema = 2,
   });
 
@@ -73,6 +75,12 @@ class PlaybackPreferences {
   /// 长按自动倍速（当前速度 ×2）
   final bool autoLongPressSpeed;
 
+  /// 切换剧集时保持倍速锁定：true 继续以锁定的倍速播放；false 解除锁定并恢复正常倍速
+  final bool keepSpeedLockAcrossEpisodes;
+
+  /// 保存各站源目录的浏览断点，再次进入时从断点继续
+  final bool saveCatalogProgress;
+
   /// 手势配置版本：v1（旧默认）→ v2（双击=播放/暂停、横滑限幅）
   final int gestureSchema;
 
@@ -91,6 +99,8 @@ class PlaybackPreferences {
     int? dragSeekSeconds,
     double? longPressSpeed,
     bool? autoLongPressSpeed,
+    bool? keepSpeedLockAcrossEpisodes,
+    bool? saveCatalogProgress,
     int? gestureSchema,
   }) => PlaybackPreferences(
     speed: speed ?? this.speed,
@@ -107,6 +117,9 @@ class PlaybackPreferences {
     dragSeekSeconds: dragSeekSeconds ?? this.dragSeekSeconds,
     longPressSpeed: longPressSpeed ?? this.longPressSpeed,
     autoLongPressSpeed: autoLongPressSpeed ?? this.autoLongPressSpeed,
+    keepSpeedLockAcrossEpisodes:
+        keepSpeedLockAcrossEpisodes ?? this.keepSpeedLockAcrossEpisodes,
+    saveCatalogProgress: saveCatalogProgress ?? this.saveCatalogProgress,
     gestureSchema: gestureSchema ?? this.gestureSchema,
   );
 
@@ -125,6 +138,8 @@ class PlaybackPreferences {
     'dragSeekSeconds': dragSeekSeconds,
     'longPressSpeed': longPressSpeed,
     'autoLongPressSpeed': autoLongPressSpeed,
+    'keepSpeedLockAcrossEpisodes': keepSpeedLockAcrossEpisodes,
+    'saveCatalogProgress': saveCatalogProgress,
     'gestureSchema': gestureSchema,
   };
 
@@ -139,6 +154,10 @@ class PlaybackPreferences {
     final slideFullscreen = value['slideFullscreen'] as bool? ?? true;
     final longPressSpeed = (value['longPressSpeed'] as num? ?? 3.0).toDouble();
     final autoLongPressSpeed = value['autoLongPressSpeed'] as bool? ?? false;
+    final keepSpeedLockAcrossEpisodes =
+        value['keepSpeedLockAcrossEpisodes'] as bool? ?? true;
+    final saveCatalogProgress =
+        value['saveCatalogProgress'] as bool? ?? true;
     // 旧版手势配置（无 gestureSchema）迁移到 v2 默认：双击=播放/暂停、横滑一屏 60 秒
     final migrated = (value['gestureSchema'] as int? ?? 1) < 2;
     final quickDoubleTap = migrated ? false : (value['quickDoubleTap'] as bool? ?? false);
@@ -167,6 +186,8 @@ class PlaybackPreferences {
       dragSeekSeconds: dragSeekSeconds,
       longPressSpeed: longPressSpeed,
       autoLongPressSpeed: autoLongPressSpeed,
+      keepSpeedLockAcrossEpisodes: keepSpeedLockAcrossEpisodes,
+      saveCatalogProgress: saveCatalogProgress,
       gestureSchema: 2,
     );
   }

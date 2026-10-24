@@ -48,6 +48,7 @@ class PlayerGestureOptions {
     this.dragSeekSeconds = 60,
     this.longPressSpeed = 3.0,
     this.autoLongPressSpeed = false,
+    this.keepSpeedLockAcrossEpisodes = true,
   });
 
   final bool slideVolumeBrightness;
@@ -60,6 +61,9 @@ class PlayerGestureOptions {
   final double longPressSpeed;
   final bool autoLongPressSpeed;
 
+  /// 切换剧集时保持倍速锁定：true 继续以锁定的倍速播放；false 解除锁定并恢复正常倍速
+  final bool keepSpeedLockAcrossEpisodes;
+
   PlayerGestureOptions copyWith({
     bool? slideVolumeBrightness,
     bool? slideFullscreen,
@@ -68,6 +72,7 @@ class PlayerGestureOptions {
     int? dragSeekSeconds,
     double? longPressSpeed,
     bool? autoLongPressSpeed,
+    bool? keepSpeedLockAcrossEpisodes,
   }) => PlayerGestureOptions(
     slideVolumeBrightness: slideVolumeBrightness ?? this.slideVolumeBrightness,
     slideFullscreen: slideFullscreen ?? this.slideFullscreen,
@@ -76,6 +81,8 @@ class PlayerGestureOptions {
     dragSeekSeconds: dragSeekSeconds ?? this.dragSeekSeconds,
     longPressSpeed: longPressSpeed ?? this.longPressSpeed,
     autoLongPressSpeed: autoLongPressSpeed ?? this.autoLongPressSpeed,
+    keepSpeedLockAcrossEpisodes:
+        keepSpeedLockAcrossEpisodes ?? this.keepSpeedLockAcrossEpisodes,
   );
 }
 
@@ -156,6 +163,9 @@ class PlayerInteractions extends ChangeNotifier {
   bool _speedLockArmed = false;
   SpeedLockHint _speedLockHint = SpeedLockHint.none;
   Offset? _longPressOrigin;
+
+  /// 倍速锁定时实际使用的倍速（切换剧集后按需恢复）
+  double? _lockedSpeed;
 
   GestureHudState get hudState => _hudState;
 
@@ -278,6 +288,8 @@ class PlayerInteractions extends ChangeNotifier {
     } else if (boosted) {
       if (commit) {
         _speedLocked = true;
+        // 记录锁定时的实际倍速，供切换剧集后按设置恢复
+        _lockedSpeed = _currentBoostSpeed();
         HapticFeedback.mediumImpact();
         _showTransientLockHint(SpeedLockHint.lockedConfirm);
         // 清掉长按开始时「上滑可锁定」的常驻文案，避免锁定后滞留屏幕
@@ -298,10 +310,34 @@ class PlayerInteractions extends ChangeNotifier {
     if (!_speedLocked) return;
     _speedLocked = false;
     _speedLockArmed = false;
+    _lockedSpeed = null;
     _cancelLockHintTimer();
     _speedLockHint = SpeedLockHint.none;
     notifyListeners();
     unawaited(_setRate(baseSpeed()));
+  }
+
+  /// 切换剧集后的倍速应用。
+  ///
+  /// 锁定态下按 [PlayerGestureOptions.keepSpeedLockAcrossEpisodes] 决定：
+  /// - true：继续以锁定的倍速播放（如长按锁定的 2 倍）
+  /// - false：解除锁定并恢复正常倍速（未加速前的播放速度）
+  ///
+  /// 未锁定时一律恢复正常倍速。切换剧集会重新 open 媒体，
+  /// 播放器倍速被重置，因此这里必须在 open 完成后重新设置。
+  Future<void> applySpeedAfterEpisodeSwitch() {
+    if (_speedLocked && options.keepSpeedLockAcrossEpisodes) {
+      return _setRate(_lockedSpeed ?? _currentBoostSpeed());
+    }
+    if (_speedLocked) {
+      _speedLocked = false;
+      _speedLockArmed = false;
+      _lockedSpeed = null;
+      _cancelLockHintTimer();
+      _speedLockHint = SpeedLockHint.none;
+      notifyListeners();
+    }
+    return _setRate(baseSpeed());
   }
 
   void _showTransientLockHint(SpeedLockHint value) {
@@ -706,6 +742,8 @@ class PlayerInteractions extends ChangeNotifier {
     if (_boosting || _speedLocked) unawaited(_setRate(baseSpeed()));
     _boosting = false;
     _speedLocked = false;
+    _speedLockArmed = false;
+    _lockedSpeed = null;
     _playing.cancel();
     _pointers.clear();
     super.dispose();

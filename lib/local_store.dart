@@ -9,6 +9,7 @@ import 'models.dart';
 import 'playback_preferences.dart';
 import 'theme_appearance.dart';
 import 'download_preferences.dart';
+import 'catalog_progress.dart';
 import 'catalog_sort.dart';
 import 'follow_state.dart';
 import 'hongguo_series.dart';
@@ -427,6 +428,67 @@ class LocalStore extends ChangeNotifier {
     } catch (_) {
       return const CatalogView();
     }
+  }
+
+  /// 各站源目录的浏览断点（key：站源分组 id）。
+  Map<String, CatalogProgress> get catalogProgress {
+    if (locked) return const {};
+    try {
+      final raw =
+          jsonDecode(_string(_key('catalogProgress')) ?? '{}') as Map;
+      final result = <String, CatalogProgress>{};
+      raw.forEach((key, value) {
+        if (key is! String || key.length > 128) return;
+        final progress = CatalogProgress.fromJson(value);
+        if (progress != null) result[key] = progress;
+      });
+      return result;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// 保存（progress 为 null 时删除）某个站源的浏览断点。
+  Future<void> saveCatalogProgress(String key, CatalogProgress? progress) {
+    if (locked || key.isEmpty || key.length > 128) return Future.value();
+    final epoch = _epoch;
+    return _queue(() async {
+      if (locked || epoch != _epoch) return;
+      final current = catalogProgress;
+      if (progress == null) {
+        if (!current.containsKey(key)) return;
+        current.remove(key);
+      } else {
+        current[key] = progress;
+      }
+      // 条目上限防御：超出时丢弃最旧的断点
+      while (current.length > catalogProgressMaxEntries) {
+        String? oldestKey;
+        var oldest = 1 << 62;
+        current.forEach((entry, value) {
+          if (value.updatedAt < oldest) {
+            oldest = value.updatedAt;
+            oldestKey = entry;
+          }
+        });
+        if (oldestKey == null) break;
+        current.remove(oldestKey);
+      }
+      await _commit({_key('catalogProgress'): jsonEncode(current)});
+      _notify();
+    });
+  }
+
+  /// 清除全部浏览断点。
+  Future<void> clearCatalogProgress() {
+    if (locked) return Future.value();
+    final epoch = _epoch;
+    return _queue(() async {
+      if (locked || epoch != _epoch) return;
+      if (catalogProgress.isEmpty) return;
+      await _commit({_key('catalogProgress'): '{}'});
+      _notify();
+    });
   }
 
   List<String> get recentSearches {
@@ -1040,6 +1102,9 @@ class LocalStore extends ChangeNotifier {
             'recentSearches': jsonDecode(
               _string(_key('recentSearches', profile.id)) ?? '[]',
             ),
+            'catalogProgress': jsonDecode(
+              _string(_key('catalogProgress', profile.id)) ?? '{}',
+            ),
           },
       },
     });
@@ -1119,6 +1184,16 @@ class LocalStore extends ChangeNotifier {
           )) {
         throw const FormatException('备份搜索记录无效');
       }
+      final progress = library['catalogProgress'] as Map? ?? {};
+      if (progress.length > catalogProgressMaxEntries ||
+          progress.keys.any((key) => key is! String || key.length > 128)) {
+        throw const FormatException('备份浏览进度无效');
+      }
+      for (final row in progress.values) {
+        if (CatalogProgress.fromJson(row) == null) {
+          throw const FormatException('备份浏览进度无效');
+        }
+      }
     }
     return data;
   }
@@ -1172,6 +1247,9 @@ class LocalStore extends ChangeNotifier {
         ),
         _key('recentSearches', profile.id): jsonEncode(
           library['recentSearches'] ?? [],
+        ),
+        _key('catalogProgress', profile.id): jsonEncode(
+          library['catalogProgress'] ?? {},
         ),
       });
     }

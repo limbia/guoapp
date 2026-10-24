@@ -11,6 +11,7 @@ import 'app_theme.dart';
 import 'background_downloads.dart';
 import 'backup_actions.dart';
 import 'local_store.dart';
+import 'other_settings_screen.dart';
 import 'playback_preferences.dart';
 import 'profiles_screen.dart';
 import 'app_build.dart';
@@ -190,6 +191,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         context,
                         MaterialPageRoute<void>(
                           builder: (_) => PlaybackGestureScreen(store: widget.store),
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      key: const ValueKey('other-settings'),
+                      leading: const Icon(Icons.more_horiz_rounded),
+                      title: const Text('其他设置'),
+                      subtitle: const Text('浏览进度等杂项功能'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => OtherSettingsScreen(store: widget.store),
                         ),
                       ),
                     ),
@@ -528,6 +542,46 @@ class _PlaybackGestureScreenState extends State<PlaybackGestureScreen> {
                       : (value) => _update(
                           preferences.copyWith(autoLongPressSpeed: value),
                         ),
+                ),
+                const SizedBox(height: 16),
+                const Text('切换剧集时的倍速'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      key: const ValueKey('gesture-episode-speed-lock-keep'),
+                      label: const Text('保持倍速锁定'),
+                      selected: preferences.keepSpeedLockAcrossEpisodes,
+                      onSelected: _busy
+                          ? null
+                          : (_) => _update(
+                              preferences.copyWith(
+                                keepSpeedLockAcrossEpisodes: true,
+                              ),
+                            ),
+                    ),
+                    ChoiceChip(
+                      key: const ValueKey('gesture-episode-speed-lock-reset'),
+                      label: const Text('恢复正常倍速'),
+                      selected: !preferences.keepSpeedLockAcrossEpisodes,
+                      onSelected: _busy
+                          ? null
+                          : (_) => _update(
+                              preferences.copyWith(
+                                keepSpeedLockAcrossEpisodes: false,
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    '保持倍速锁定：切换上/下一集后继续以锁定的倍速（如长按锁定的 2 倍）播放；恢复正常倍速：切换后解除锁定，回到默认倍速。',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const Text(

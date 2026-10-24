@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'app_layout.dart';
 import 'app_bottom_navigation.dart';
 import 'app_glass.dart';
+import 'catalog_progress.dart';
 import 'core_bridge.dart';
 import 'catalog_filters.dart';
 import 'catalog_browser.dart';
@@ -104,6 +105,15 @@ class _HomeScreenState extends State<HomeScreen> {
   String _sourceSignature = '';
   bool _catalogLoadScheduled = false;
 
+  /// 目录网格几何：行高（item 高 + 行距）与列数，用于滚动位置 ↔ item 索引换算
+  double _gridRowExtent = 0;
+  int _gridColumns = 1;
+  /// 待恢复的浏览断点（进入源时装载，定位成功后清除）
+  CatalogProgress? _pendingRestore;
+  int _restoreAttempts = 0;
+  int _restoreWaits = 0;
+  Timer? _progressSaveTimer;
+
   List<SourceGroup> get _sourceGroups {
     final groups = SourceGroup.fromSources(widget.store.sources);
     return [
@@ -176,6 +186,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshCatalog() async {
+    // 下拉刷新是用户主动回到顶部的行为，取消待恢复断点与待保存计时
+    _pendingRestore = null;
+    _progressSaveTimer?.cancel();
     if (widget.repository.supportsSourceManagement) {
       if (_group.sources.any((source) => _updater.busy(source.id))) return;
       _pauseCatalog();
@@ -186,8 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) await _load(force: true);
   }
 
-  void _updateChanged() {
-    if (mounted) setState(() {});
+  void _updateChanged() {    if (mounted) setState(() {});
   }
 
   /// 密码锁切换后可见站源会变，这里把当前站源归一化到仍然可见的站源。
@@ -320,6 +332,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
+    // 分类切换后断点语境失效，取消待恢复的浏览断点
+    _pendingRestore = null;
+    _progressSaveTimer?.cancel();
     _load(useCache: true);
   }
 
@@ -458,6 +473,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (widget.store.sources.isNotEmpty) {
       _load(useCache: true);
       _loadCategories();
+      _scheduleCatalogProgressRestore();
     } else {
       _loading = false;
     }
@@ -475,6 +491,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_browser.cancel());
     unawaited(widget.repository.cancelSuggestions());
     _debounce?.cancel();
+    _progressSaveTimer?.cancel();
     _search.dispose();
     _scroll.removeListener(_onCatalogScroll);
     _scroll.dispose();
@@ -483,6 +500,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onCatalogScroll() {
+    // 断点保存独立于「加载更多」的早退条件：全部加载完毕后滚动同样要保存
+    _scheduleProgressSave();
     if (!mounted ||
         _showRecommendations ||
         !_hasMore ||
@@ -507,6 +526,113 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       unawaited(_load(more: true));
     });
+  }
+
+  /// 滚动停止后保存当前源的浏览断点（防抖，避免高频写盘）。
+  void _scheduleProgressSave() {
+    if (!widget.store.playbackPreferences.saveCatalogProgress) return;
+    if (_showRecommendations || _search.text.trim().isNotEmpty) return;
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(
+      const Duration(milliseconds: 400),
+      _saveCatalogProgress,
+    );
+  }
+
+  void _saveCatalogProgress() {
+    _progressSaveTimer = null;
+    if (!mounted) return;
+    if (!widget.store.playbackPreferences.saveCatalogProgress) return;
+    if (_showRecommendations || _search.text.trim().isNotEmpty) return;
+    // 恢复定位过程中的 jumpTo 不应回写断点
+    if (_pendingRestore != null || _loading || !_scroll.hasClients) return;
+    if (_gridRowExtent <= 0) return;
+    final items = _visible;
+    if (items.isEmpty) return;
+    final pixels = _scroll.position.pixels;
+    if (pixels <= 0) return;
+    final row = (pixels / _gridRowExtent).floor();
+    final index = (row * _gridColumns).clamp(0, items.length - 1);
+    unawaited(
+      widget.store.saveCatalogProgress(
+        _group.id,
+        CatalogProgress.capture(
+          ids: items.map((drama) => drama.id).toList(),
+          titles: items.map((drama) => drama.title).toList(),
+          index: index,
+          now: DateTime.now().millisecondsSinceEpoch,
+        ),
+      ),
+    );
+  }
+
+  /// 进入源时装载断点，待目录数据就绪后定位。
+  void _scheduleCatalogProgressRestore() {
+    if (!widget.store.playbackPreferences.saveCatalogProgress) return;
+    if (_showRecommendations || _search.text.trim().isNotEmpty) return;
+    final progress = widget.store.catalogProgress[_group.id];
+    if (progress == null) return;
+    _pendingRestore = progress;
+    _restoreAttempts = 0;
+    _restoreWaits = 0;
+    _tryRestoreCatalogProgress();
+  }
+
+  void _tryRestoreCatalogProgress() {
+    final progress = _pendingRestore;
+    if (progress == null || !mounted) return;
+    if (_loading || _loadingMore) return;
+    if (!_scroll.hasClients || _gridRowExtent <= 0) {
+      // 列表尚未挂载（首屏数据刚到），下一帧再试；上限 6 帧
+      if (_restoreWaits < 6) {
+        _restoreWaits++;
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _tryRestoreCatalogProgress(),
+        );
+      }
+      return;
+    }
+    final items = _visible;
+    if (items.isEmpty) return;
+    final ids = items.map((drama) => drama.id).toList();
+    var index = ids.indexOf(progress.dramaId);
+    var anchored = false;
+    if (index < 0) {
+      // 断点视频可能已下架：经相邻视频重新锚定到附近
+      for (final neighbor in progress.neighbors) {
+        final found = ids.indexOf(neighbor);
+        if (found >= 0) {
+          index = found;
+          anchored = true;
+          break;
+        }
+      }
+    }
+    if (index >= 0) {
+      // 断点行上方保留一行上下文；锚定恢复时断点就在视口顶部
+      final row = (index ~/ _gridColumns) - (anchored ? 0 : 1);
+      final offset = (row < 0 ? 0 : row) * _gridRowExtent;
+      _pendingRestore = null;
+      _scroll.jumpTo(offset.clamp(0, _scroll.position.maxScrollExtent));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            anchored
+                ? '已定位到上次浏览附近'
+                : '已定位到上次浏览：${progress.dramaTitle}',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    // 断点可能在尚未加载的后续页：继续加载（限次，避免无底洞）
+    if (_hasMore && _restoreAttempts < 6) {
+      _restoreAttempts++;
+      unawaited(_load(more: true));
+      return;
+    }
+    _pendingRestore = null;
   }
 
   void _metadataChanged() {
@@ -559,6 +685,11 @@ class _HomeScreenState extends State<HomeScreen> {
       unawaited(
         saveUserChange(context, () => widget.store.refreshDramas(result.items)),
       );
+      if (_pendingRestore != null) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _tryRestoreCatalogProgress(),
+        );
+      }
     }
 
     try {
@@ -611,6 +742,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _load(useCache: true);
     _loadCategories();
+    _scheduleCatalogProgressRestore();
   }
 
   void _searchChanged(String query) {
@@ -1473,6 +1605,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         final padding = constraints.maxWidth < 600
                             ? 16.0
                             : 24.0;
+                        final gridDelegate =
+                            dramaGridDelegate(
+                              context,
+                              constraints.maxWidth - 2 * padding,
+                            )
+                            as SliverGridDelegateWithFixedCrossAxisCount;
+                        // 记录网格几何：浏览断点的滚动位置 ↔ item 索引换算
+                        final itemExtent = gridDelegate.mainAxisExtent;
+                        _gridRowExtent =
+                            itemExtent == null
+                            ? 0
+                            : itemExtent + gridDelegate.mainAxisSpacing;
+                        _gridColumns = gridDelegate.crossAxisCount;
                         return RefreshIndicator(
                           onRefresh: _refreshCatalog,
                           child: CustomScrollView(
@@ -1487,10 +1632,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   16 + MediaQuery.paddingOf(context).bottom,
                                 ),
                                 sliver: SliverGrid(
-                                  gridDelegate: dramaGridDelegate(
-                                    context,
-                                    constraints.maxWidth - 2 * padding,
-                                  ),
+                                  gridDelegate: gridDelegate,
                                   delegate: SliverChildBuilderDelegate(
                                     (_, index) => _catalogTile(items[index]),
                                     childCount: items.length,
@@ -1623,6 +1765,9 @@ class _HomeScreenState extends State<HomeScreen> {
     ScrollController? controller,
     Widget? footer,
   }) {
+    // 电视端使用 RemoteGrid（焦点滚动），不参与浏览断点的保存/恢复，
+    // 显式清零网格几何，避免残留移动端换算值被误用。
+    _gridRowExtent = 0;
     final columns = ((width - 36) / 150).floor().clamp(1, 8);
     final tileWidth = (width - 36 - (columns - 1) * 14) / columns;
     return RemoteGrid(
