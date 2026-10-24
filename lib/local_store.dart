@@ -139,9 +139,10 @@ class LocalStore extends ChangeNotifier {
       SourceSite.isAvailable(source) &&
       profile.allows(source) &&
       (_gateOff || _sourcesUnlocked || SourceSite.isPrimary(source));
-  List<SourceSite> get sources => SourceSite.visibleValues(
-        unlocked: _gateOff || _sourcesUnlocked,
-      ).where((site) => allowsSource(site.id)).toList();
+  List<SourceSite> get sources =>
+      SourceSite.visibleValues(unlocked: _gateOff || _sourcesUnlocked)
+          .where((site) => allowsSource(site.id))
+          .toList();
 
   /// 默认隐藏的站源是否已解锁。解锁状态只在本次运行内有效，重启后恢复隐藏。
   bool get sourcesUnlocked => _gateOff || _sourcesUnlocked;
@@ -159,7 +160,8 @@ class LocalStore extends ChangeNotifier {
     final off = _bool('sourceGateOff') ?? false;
     final salt = _string('sourceGateSalt') ?? '';
     final hash = _string('sourceGateHash') ?? '';
-    final valid = enabled &&
+    final valid =
+        enabled &&
         RegExp(r'^[a-f0-9]{32}$').hasMatch(salt) &&
         RegExp(r'^[a-f0-9]{64}$').hasMatch(hash);
     _gateEnabled = valid;
@@ -193,14 +195,14 @@ class LocalStore extends ChangeNotifier {
 
   /// 校验密码并解锁默认隐藏的站源（仅本次运行有效）。
   Future<void> unlockSources(String pin) => _queue(() async {
-        if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
-        if (!_gateEnabled) throw StateError('尚未启用站源密码锁');
-        await _checkSourcePin(pin);
-        if (!_sourcesUnlocked) {
-          _sourcesUnlocked = true;
-          _notify();
-        }
-      });
+    if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
+    if (!_gateEnabled) throw StateError('尚未启用站源密码锁');
+    await _checkSourcePin(pin);
+    if (!_sourcesUnlocked) {
+      _sourcesUnlocked = true;
+      _notify();
+    }
+  });
 
   /// 重新隐藏默认隐藏的站源，无需重启。
   void lockSources() {
@@ -211,43 +213,43 @@ class LocalStore extends ChangeNotifier {
 
   /// 设置或更换密码锁，并立即解锁。
   Future<void> enableSourceGate(String pin) => _queue(() async {
-        _requireAdmin();
-        final value = pin.trim();
-        if (!RegExp(r'^\d{3,12}$').hasMatch(value)) {
-          throw StateError('密码需要 3 至 12 位数字');
-        }
-        final salt = randomProfileToken();
-        final hash = await _pinHasher(value, salt);
-        await _commit({
-          'sourceGateEnabled': true,
-          'sourceGateOff': false,
-          'sourceGateSalt': salt,
-          'sourceGateHash': hash,
-        });
-        _gateEnabled = true;
-        _gateOff = false;
-        _gateSalt = salt;
-        _gateHash = hash;
-        _sourcesUnlocked = true;
-        _notify();
-      });
+    _requireAdmin();
+    final value = pin.trim();
+    if (!RegExp(r'^\d{3,12}$').hasMatch(value)) {
+      throw StateError('密码需要 3 至 12 位数字');
+    }
+    final salt = randomProfileToken();
+    final hash = await _pinHasher(value, salt);
+    await _commit({
+      'sourceGateEnabled': true,
+      'sourceGateOff': false,
+      'sourceGateSalt': salt,
+      'sourceGateHash': hash,
+    });
+    _gateEnabled = true;
+    _gateOff = false;
+    _gateSalt = salt;
+    _gateHash = hash;
+    _sourcesUnlocked = true;
+    _notify();
+  });
 
   /// 关闭密码功能，恢复全部站源可见。
   Future<void> disableSourceGate() => _queue(() async {
-        _requireAdmin();
-        await _commit({
-          'sourceGateEnabled': false,
-          'sourceGateOff': true,
-          'sourceGateSalt': '',
-          'sourceGateHash': '',
-        });
-        _gateEnabled = false;
-        _gateOff = true;
-        _gateSalt = '';
-        _gateHash = '';
-        _sourcesUnlocked = false;
-        _notify();
-      });
+    _requireAdmin();
+    await _commit({
+      'sourceGateEnabled': false,
+      'sourceGateOff': true,
+      'sourceGateSalt': '',
+      'sourceGateHash': '',
+    });
+    _gateEnabled = false;
+    _gateOff = true;
+    _gateSalt = '';
+    _gateHash = '';
+    _sourcesUnlocked = false;
+    _notify();
+  });
 
   void _loadLibrary() {
     _lanDocumentCache = null;
@@ -296,10 +298,11 @@ class LocalStore extends ChangeNotifier {
     }
   }
 
-  List<WatchEntry> get history => _history.values
-      .where((entry) => allowsSource(entry.drama.source))
-      .toList()
-    ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  List<WatchEntry> get history =>
+      _history.values
+          .where((entry) => allowsSource(entry.drama.source))
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   List<Drama> get favorites => _favorites.values
       .where((drama) => allowsSource(drama.source))
       .toList()
@@ -430,12 +433,11 @@ class LocalStore extends ChangeNotifier {
     }
   }
 
-  /// 各站源目录的浏览断点（key：站源分组 id）。
+  /// 各站源目录的浏览断点（key：`源分组id:二级分类id`，每源每分类各一条）。
   Map<String, CatalogProgress> get catalogProgress {
     if (locked) return const {};
     try {
-      final raw =
-          jsonDecode(_string(_key('catalogProgress')) ?? '{}') as Map;
+      final raw = jsonDecode(_string(_key('catalogProgress')) ?? '{}') as Map;
       final result = <String, CatalogProgress>{};
       raw.forEach((key, value) {
         if (key is! String || key.length > 128) return;
@@ -448,7 +450,7 @@ class LocalStore extends ChangeNotifier {
     }
   }
 
-  /// 保存（progress 为 null 时删除）某个站源的浏览断点。
+  /// 保存（progress 为 null 时删除）某个「源 + 分类」的浏览断点。
   Future<void> saveCatalogProgress(String key, CatalogProgress? progress) {
     if (locked || key.isEmpty || key.length > 128) return Future.value();
     final epoch = _epoch;
@@ -612,12 +614,12 @@ class LocalStore extends ChangeNotifier {
 
   Future<void> setDisplayMode(String value) =>
       {'auto', 'television', 'standard'}.contains(value)
-          ? _setting('displayMode', value)
-          : Future.value();
+      ? _setting('displayMode', value)
+      : Future.value();
   Future<void> setThemeMode(String value) =>
       {'light', 'dark', 'system'}.contains(value)
-          ? _setting('themeMode', value)
-          : Future.value();
+      ? _setting('themeMode', value)
+      : Future.value();
 
   Future<void> setThemeAppearance(ThemeAppearance value) {
     ThemeAppearance.fromJson(value.toJson());
@@ -660,8 +662,8 @@ class LocalStore extends ChangeNotifier {
   }
 
   String _encodeFollowStates(Map<String, FollowState> states) => jsonEncode({
-        for (final entry in states.entries) entry.key: entry.value.toJson(),
-      });
+    for (final entry in states.entries) entry.key: entry.value.toJson(),
+  });
 
   Future<void> setFollowStatus(Drama drama, FollowStatus status) {
     final epoch = _epoch;
@@ -672,10 +674,11 @@ class LocalStore extends ChangeNotifier {
       }
       final current = _favorites[drama.id]?.merge(drama) ?? drama;
       final entries = Map.of(_favorites)..[drama.id] = current;
-      final state = (_followStates[drama.id] ??
-              FollowState.initial(current, _history[drama.id]))
-          .observe(current)
-          .withStatus(status);
+      final state =
+          (_followStates[drama.id] ??
+                  FollowState.initial(current, _history[drama.id]))
+              .observe(current)
+              .withStatus(status);
       final states = Map.of(_followStates)..[drama.id] = state;
       await _commit({
         _key('favorites'): jsonEncode(
@@ -841,8 +844,8 @@ class LocalStore extends ChangeNotifier {
       for (final drama in updates) {
         if (!allowsSource(drama.source)) continue;
         if (cacheSeriesCandidates && drama.source == SourceSite.hongguo.id) {
-          seriesCandidates[drama.id] =
-              (seriesCandidates[drama.id] ?? drama).merge(drama);
+          seriesCandidates[drama.id] = (seriesCandidates[drama.id] ?? drama)
+              .merge(drama);
         }
         final favorite = favorites[drama.id];
         if (favorite != null) {
@@ -960,16 +963,16 @@ class LocalStore extends ChangeNotifier {
   }
 
   Future<void> switchProfile(String id, {String pin = ''}) => _queue(() async {
-        if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
-        final target = _profiles.firstWhere((profile) => profile.id == id);
-        await _checkPin(target, pin);
-        await _commit({'activeProfile': id});
-        _current = id;
-        _locked = false;
-        _loadLibrary();
-        _epoch++;
-        _notify();
-      });
+    if (_configurationError != null) throw StateError('本地用户配置损坏，请先恢复');
+    final target = _profiles.firstWhere((profile) => profile.id == id);
+    await _checkPin(target, pin);
+    await _commit({'activeProfile': id});
+    _current = id;
+    _locked = false;
+    _loadLibrary();
+    _epoch++;
+    _notify();
+  });
   void lock() {
     if (!profile.protected) return;
     _locked = true;
@@ -983,83 +986,82 @@ class LocalStore extends ChangeNotifier {
     required List<String> sources,
     required bool download,
     String? pin,
-  }) =>
-      _queue(() async {
-        _requireAdmin();
-        final old = _profiles.where((profile) => profile.id == id).firstOrNull;
-        final targetId = old?.id ?? randomProfileToken();
-        final cleanName = name.trim();
-        if (cleanName.isEmpty || cleanName.length > 40) {
-          throw StateError('用户名需要 1 至 40 个字符');
+  }) => _queue(() async {
+    _requireAdmin();
+    final old = _profiles.where((profile) => profile.id == id).firstOrNull;
+    final targetId = old?.id ?? randomProfileToken();
+    final cleanName = name.trim();
+    if (cleanName.isEmpty || cleanName.length > 40) {
+      throw StateError('用户名需要 1 至 40 个字符');
+    }
+    if (sources.any((source) => !SourceSite.isKnown(source))) {
+      throw StateError('站源无效');
+    }
+    if (targetId != 'default' &&
+        !_profiles.firstWhere((profile) => profile.admin).protected) {
+      throw StateError('请先为管理员设置密码，再创建或修改其他用户');
+    }
+    if (old == null && _profiles.length >= 20) {
+      throw StateError('最多支持 20 个本地用户');
+    }
+    var salt = old?.salt ?? '', hash = old?.pinHash ?? '';
+    if (pin != null) {
+      if (pin.isEmpty) {
+        if (targetId == 'default' && _profiles.length > 1) {
+          throw StateError('存在其他用户时不能取消管理员密码');
         }
-        if (sources.any((source) => !SourceSite.isKnown(source))) {
-          throw StateError('站源无效');
+        salt = '';
+        hash = '';
+      } else {
+        if (pin.length < 6 || pin.length > 128) {
+          throw StateError('密码需要 6 至 128 个字符');
         }
-        if (targetId != 'default' &&
-            !_profiles.firstWhere((profile) => profile.admin).protected) {
-          throw StateError('请先为管理员设置密码，再创建或修改其他用户');
-        }
-        if (old == null && _profiles.length >= 20) {
-          throw StateError('最多支持 20 个本地用户');
-        }
-        var salt = old?.salt ?? '', hash = old?.pinHash ?? '';
-        if (pin != null) {
-          if (pin.isEmpty) {
-            if (targetId == 'default' && _profiles.length > 1) {
-              throw StateError('存在其他用户时不能取消管理员密码');
-            }
-            salt = '';
-            hash = '';
-          } else {
-            if (pin.length < 6 || pin.length > 128) {
-              throw StateError('密码需要 6 至 128 个字符');
-            }
-            salt = randomProfileToken();
-            hash = await _pinHasher(pin, salt);
-          }
-        }
-        _requireAdmin();
-        final updated = LocalProfile(
-          id: targetId,
-          name: cleanName,
-          admin: targetId == 'default',
-          sources: sources.toSet().toList(),
-          download: download,
-          salt: salt,
-          pinHash: hash,
-        );
-        final profiles = [
+        salt = randomProfileToken();
+        hash = await _pinHasher(pin, salt);
+      }
+    }
+    _requireAdmin();
+    final updated = LocalProfile(
+      id: targetId,
+      name: cleanName,
+      admin: targetId == 'default',
+      sources: sources.toSet().toList(),
+      download: download,
+      salt: salt,
+      pinHash: hash,
+    );
+    final profiles =
+        [
           for (final profile in _profiles)
             if (profile.id != targetId) profile,
           updated,
         ]..sort(
-            (a, b) => a.admin
-                ? -1
-                : b.admin
-                    ? 1
-                    : a.name.compareTo(b.name),
-          );
-        await _commit({
-          'profiles': jsonEncode(
-            profiles.map((profile) => profile.toJson()).toList(),
-          ),
-        });
-        _profiles = profiles;
-        _notify();
-      });
+          (a, b) => a.admin
+              ? -1
+              : b.admin
+              ? 1
+              : a.name.compareTo(b.name),
+        );
+    await _commit({
+      'profiles': jsonEncode(
+        profiles.map((profile) => profile.toJson()).toList(),
+      ),
+    });
+    _profiles = profiles;
+    _notify();
+  });
   Future<void> deleteProfile(String id) => _queue(() async {
-        _requireAdmin();
-        if (id == 'default') throw StateError('不能删除管理员');
-        final profiles =
-            _profiles.where((profile) => profile.id != id).toList();
-        await _commit({
-          'profiles': jsonEncode(
-            profiles.map((profile) => profile.toJson()).toList(),
-          ),
-        }, remove: LocalSnapshot.libraryKeys.map((key) => _key(key, id)));
-        _profiles = profiles;
-        _notify();
-      });
+    _requireAdmin();
+    if (id == 'default') throw StateError('不能删除管理员');
+    final profiles = _profiles.where((profile) => profile.id != id).toList();
+    await _commit({
+      'profiles': jsonEncode(
+        profiles.map((profile) => profile.toJson()).toList(),
+      ),
+    }, remove: LocalSnapshot.libraryKeys.map((key) => _key(key, id)));
+    _profiles = profiles;
+    _notify();
+  });
 
   Future<String> exportBackup() async {
     await _writes.catchError((Object _) {});
@@ -1207,8 +1209,8 @@ class LocalStore extends ChangeNotifier {
       'activeProfile': profiles.firstWhere((profile) => profile.admin).id,
       'displayMode':
           {'auto', 'television', 'standard'}.contains(data['displayMode'])
-              ? data['displayMode'] as String
-              : 'auto',
+          ? data['displayMode'] as String
+          : 'auto',
       'themeMode': data['themeMode'] as String? ?? themeMode,
       'autoExport': data['autoExport'] == true,
       'exportPosters': data['exportPosters'] == true,
@@ -1265,9 +1267,9 @@ class LocalStore extends ChangeNotifier {
   }
 
   Future<void> importBackup(String content) => _queue(() async {
-        _requireAdmin();
-        await _installBackup(validateBackup(content));
-      });
+    _requireAdmin();
+    await _installBackup(validateBackup(content));
+  });
 
   Future<void> recoverBackup(String content, {required String pin}) =>
       _queue(() async {
@@ -1276,8 +1278,9 @@ class LocalStore extends ChangeNotifier {
         LocalProfile? originalAdmin;
         try {
           final raw = preferences.getString(LocalSnapshot.storageKey);
-          final values =
-              raw == null ? null : (jsonDecode(raw) as Map)['values'] as Map;
+          final values = raw == null
+              ? null
+              : (jsonDecode(raw) as Map)['values'] as Map;
           final records = jsonDecode(
             (values?['profiles'] as String?) ??
                 preferences.getString('profiles') ??
@@ -1291,11 +1294,11 @@ class LocalStore extends ChangeNotifier {
             }
           }
         } catch (_) {}
-        final backupAdmin = _readProfiles(
-          data['profiles'],
-        ).firstWhere((profile) => profile.admin);
-        final verifier =
-            originalAdmin?.protected == true ? originalAdmin! : backupAdmin;
+        final backupAdmin = _readProfiles(data['profiles'])
+            .firstWhere((profile) => profile.admin);
+        final verifier = originalAdmin?.protected == true
+            ? originalAdmin!
+            : backupAdmin;
         if (!verifier.protected) throw StateError('无法验证管理员身份，请使用包含管理员密码的备份恢复');
         await _checkPin(verifier, pin);
         _snapshot ??= LocalSnapshot.empty(preferences);
@@ -1316,21 +1319,22 @@ class LocalStore extends ChangeNotifier {
   }
 
   Future<void> reload() => _queue(() async {
-        final previousProfiles =
-            _configurationError == null ? _string('profiles') : null;
-        final previousId = _current;
-        final previousLocked = locked;
-        await preferences.reload();
-        _initialize();
-        if (_configurationError == null &&
-            previousProfiles == _string('profiles') &&
-            previousId == _current) {
-          _locked = previousLocked;
-        } else {
-          _epoch++;
-        }
-        _notify();
-      });
+    final previousProfiles = _configurationError == null
+        ? _string('profiles')
+        : null;
+    final previousId = _current;
+    final previousLocked = locked;
+    await preferences.reload();
+    _initialize();
+    if (_configurationError == null &&
+        previousProfiles == _string('profiles') &&
+        previousId == _current) {
+      _locked = previousLocked;
+    } else {
+      _epoch++;
+    }
+    _notify();
+  });
 
   Future<void> _queue(Future<void> Function() action) {
     _writes = _writes.catchError((Object _) {}).then((_) => action());

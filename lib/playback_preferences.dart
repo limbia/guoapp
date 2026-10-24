@@ -78,7 +78,7 @@ class PlaybackPreferences {
   /// 切换剧集时保持倍速锁定：true 继续以锁定的倍速播放；false 解除锁定并恢复正常倍速
   final bool keepSpeedLockAcrossEpisodes;
 
-  /// 保存各站源目录的浏览断点，再次进入时从断点继续
+  /// 保存各站源、各分类目录的浏览断点，再次进入时从断点继续
   final bool saveCatalogProgress;
 
   /// 手势配置版本：v1（旧默认）→ v2（双击=播放/暂停、横滑限幅）
@@ -150,21 +150,24 @@ class PlaybackPreferences {
     final danmaku = value['danmaku'] as bool? ?? true;
     final preload = value['preload'] as bool? ?? true;
     final fitType = value['fitType'] as String? ?? 'contain';
-    final slideVolumeBrightness = value['slideVolumeBrightness'] as bool? ?? true;
+    final slideVolumeBrightness =
+        value['slideVolumeBrightness'] as bool? ?? true;
     final slideFullscreen = value['slideFullscreen'] as bool? ?? true;
     final longPressSpeed = (value['longPressSpeed'] as num? ?? 3.0).toDouble();
     final autoLongPressSpeed = value['autoLongPressSpeed'] as bool? ?? false;
     final keepSpeedLockAcrossEpisodes =
         value['keepSpeedLockAcrossEpisodes'] as bool? ?? true;
-    final saveCatalogProgress =
-        value['saveCatalogProgress'] as bool? ?? true;
+    final saveCatalogProgress = value['saveCatalogProgress'] as bool? ?? true;
     // 旧版手势配置（无 gestureSchema）迁移到 v2 默认：双击=播放/暂停、横滑一屏 60 秒
     final migrated = (value['gestureSchema'] as int? ?? 1) < 2;
-    final quickDoubleTap = migrated ? false : (value['quickDoubleTap'] as bool? ?? false);
-    final doubleTapSeekSeconds =
-        (value['doubleTapSeekSeconds'] as int? ?? 10).clamp(5, 60);
-    final dragSeekSeconds =
-        migrated ? 60 : (value['dragSeekSeconds'] as int? ?? 60).clamp(15, 300);
+    final quickDoubleTap = migrated
+        ? false
+        : (value['quickDoubleTap'] as bool? ?? false);
+    final doubleTapSeekSeconds = (value['doubleTapSeekSeconds'] as int? ?? 10)
+        .clamp(5, 60);
+    final dragSeekSeconds = migrated
+        ? 60
+        : (value['dragSeekSeconds'] as int? ?? 60).clamp(15, 300);
     if (!playbackSpeeds.contains(speed) || quality < 0 || quality > 4320) {
       throw const FormatException('播放偏好无效');
     }

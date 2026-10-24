@@ -119,6 +119,64 @@ void main() {
       expect(store.catalogProgress.keys, ['yeguo']);
     });
 
+    test('「源分组+二级分类」复合键各自独立存储', () async {
+      final (store, platform) = await create();
+      // 同一源下的不同二级分类（含红果推荐视图的细分类）互不覆盖
+      await store.saveCatalogProgress(
+        'hongguo:',
+        CatalogProgress.capture(
+          ids: const ['a', 'b', 'c'],
+          titles: const ['甲', '乙', '丙'],
+          index: 0,
+          now: 1000,
+        ),
+      );
+      await store.saveCatalogProgress(
+        'hongguo:theme:xxx',
+        CatalogProgress.capture(
+          ids: const ['d', 'e', 'f'],
+          titles: const ['丁', '戊', '己'],
+          index: 2,
+          now: 2000,
+        ),
+      );
+      await store.saveCatalogProgress(
+        'hongguo:app:recommendations:short_play',
+        CatalogProgress.capture(
+          ids: const ['g', 'h'],
+          titles: const ['庚', '辛'],
+          index: 1,
+          now: 3000,
+        ),
+      );
+      expect(store.catalogProgress.length, 3);
+      expect(store.catalogProgress['hongguo:']!.dramaId, 'a');
+      expect(store.catalogProgress['hongguo:theme:xxx']!.dramaId, 'f');
+      expect(
+        store.catalogProgress['hongguo:app:recommendations:short_play']!.dramaId,
+        'h',
+      );
+      final restarted = await restart(platform);
+      expect(restarted.catalogProgress.length, 3);
+      expect(restarted.catalogProgress['hongguo:theme:xxx']!.updatedAt, 2000);
+    });
+
+    test('超出条目上限时淘汰最旧的断点', () async {
+      final (store, _) = await create();
+      for (var i = 0; i < 260; i++) {
+        await store.saveCatalogProgress(
+          'key$i',
+          CatalogProgress(dramaId: 'd$i', dramaTitle: '剧$i', neighbors: [], updatedAt: i),
+        );
+      }
+      expect(store.catalogProgress.length, 256);
+      // 最旧的 4 条（key0..key3）被淘汰，最新的保留
+      expect(store.catalogProgress.containsKey('key0'), isFalse);
+      expect(store.catalogProgress.containsKey('key3'), isFalse);
+      expect(store.catalogProgress.containsKey('key4'), isTrue);
+      expect(store.catalogProgress.containsKey('key259'), isTrue);
+    });
+
     test('备份导出包含浏览进度，恢复后生效', () async {
       final (store, platform) = await create();
       await store.saveCatalogProgress(

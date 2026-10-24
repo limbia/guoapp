@@ -69,7 +69,8 @@ class CatalogProgress {
       final before = index - step;
       if (before >= 0 && ids[before] != dramaId) neighbors.add(ids[before]);
       final after = index + step;
-      if (after < ids.length && ids[after] != dramaId) neighbors.add(ids[after]);
+      if (after < ids.length && ids[after] != dramaId)
+        neighbors.add(ids[after]);
     }
     return CatalogProgress(
       dramaId: dramaId,
@@ -80,5 +81,8 @@ class CatalogProgress {
   }
 }
 
-/// 浏览进度备份的字段数量上限（源数量有限，防御异常数据）。
-const catalogProgressMaxEntries = 64;
+/// 浏览进度备份的字段数量上限。
+///
+/// 断点按「源分组 + 二级分类」分别存储（如 `hongguo:app:recommendations:short_play`），
+/// 上限相应放宽；超出时丢弃最旧的断点。
+const catalogProgressMaxEntries = 256;

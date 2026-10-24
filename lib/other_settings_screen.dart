@@ -21,9 +21,8 @@ class _OtherSettingsScreenState extends State<OtherSettingsScreen> {
       await widget.store.setPlaybackPreferences(next);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存失败：$error')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -34,9 +33,8 @@ class _OtherSettingsScreenState extends State<OtherSettingsScreen> {
     final count = widget.store.catalogProgress.length;
     if (count == 0) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('暂无已保存的浏览进度')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('暂无已保存的浏览进度')));
       }
       return;
     }
@@ -62,15 +60,13 @@ class _OtherSettingsScreenState extends State<OtherSettingsScreen> {
     try {
       await saveUserChange(context, widget.store.clearCatalogProgress);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已清除全部浏览进度')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已清除全部浏览进度')));
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('清除失败：$error')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('清除失败：$error')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -96,7 +92,8 @@ class _OtherSettingsScreenState extends State<OtherSettingsScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('保存浏览进度'),
                   subtitle: const Text(
-                    '记录每个站源目录里刷到的位置；再次进入该源时自动从断点继续往下刷。'
+                    '记录每个站源、每个分类（如红果下的推荐 / 真人剧 / 漫剧 / AI 剧）里刷到的位置；'
+                    '再次进入该分类时自动从断点继续往下刷。'
                     '浏览进度会随配置备份（含 WebDAV）一起备份与恢复。',
                   ),
                   value: preferences.saveCatalogProgress,
@@ -115,14 +112,14 @@ class _OtherSettingsScreenState extends State<OtherSettingsScreen> {
                   subtitle: Text(
                     progressCount == 0
                         ? '当前没有已保存的浏览进度'
-                        : '已保存 $progressCount 个站源的浏览断点',
+                        : '已保存 $progressCount 个浏览断点',
                   ),
                   enabled: !_busy && progressCount > 0,
                   onTap: _clearProgress,
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  '提示：浏览断点按「视频列表」维度记录，恢复时会优先定位到上次的视频；'
+                  '提示：浏览断点按「站源 × 分类」分别记录，恢复时会优先定位到上次的视频；'
                   '若该视频已下架，会自动定位到附近仍在的剧集。',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),

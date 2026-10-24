@@ -1,5 +1,4 @@
 import 'package:duanju_app/app_bottom_navigation.dart';
-import 'package:duanju_app/home_screen.dart';
 import 'package:duanju_app/local_store.dart';
 import 'package:duanju_app/main.dart';
 import 'package:duanju_app/settings_screen.dart';
