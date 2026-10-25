@@ -637,10 +637,38 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		if category != "" && state != nil {
 			result.HasMore = !state.Feeds["category:"+category].Exhausted
 		}
-		if len(items) == 0 && err != nil && ctx.Err() == nil && (category == "" || category == "short_play") {
-			var totalPages int
-			items, totalPages, err = d.fetchHongguoCategoryPage(ctx, "real-drama?page="+strconv.Itoa(page), "真人剧")
-			result.HasMore = page < totalPages
+		if len(items) == 0 && err != nil && ctx.Err() == nil {
+			// App 接口失败（空响应 / 风控）时按分类回退到网页版分类页
+			if routes := hongguoWebFallbackRoutes(category); len(routes) > 0 {
+				seen := map[string]bool{}
+				merged := make([]Drama, 0, len(items))
+				var totalPages int
+				var failures []error
+				for _, route := range routes {
+					pageItems, pages, routeErr := d.fetchHongguoCategoryPage(ctx, route.path+"?page="+strconv.Itoa(page), route.name)
+					if pages > totalPages {
+						totalPages = pages
+					}
+					if routeErr != nil {
+						failures = append(failures, routeErr)
+					}
+					for _, drama := range pageItems {
+						if !seen[drama.ID] {
+							seen[drama.ID] = true
+							merged = append(merged, drama)
+						}
+					}
+				}
+				items = merged
+				if len(items) > 0 {
+					// 有路由成功：仅提示失败的路由，正常返回结果
+					err = errors.Join(failures...)
+				} else {
+					// 全部失败：附上 App 侧原始错误便于定位
+					err = errors.Join(append([]error{err}, failures...)...)
+				}
+				result.HasMore = page < totalPages
+			}
 		}
 	case sourceHuangdou:
 		client := newHuangdouAPIClient(d)

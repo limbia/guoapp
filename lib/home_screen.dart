@@ -572,6 +572,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!widget.store.playbackPreferences.saveCatalogProgress) return;
     // 搜索结果不是稳定目录，不记录断点
     if (_search.text.trim().isNotEmpty) return;
+    // 推荐视图（红果）由 RecommendationsScreen 自行按二级分类管理，
+    // 这里回写会把过期的目录网格状态写进推荐断点键
+    if (_showRecommendations) return;
     // 恢复定位过程中的 jumpTo 不应回写断点
     if (_pendingRestore != null || _loading) return;
     if (_gridRowExtent <= 0) return;
@@ -616,17 +619,25 @@ class _HomeScreenState extends State<HomeScreen> {
     if (progress == null || !mounted) return;
     if (_loading || _loadingMore) return;
     if (!_scroll.hasClients || _gridRowExtent <= 0) {
-      // 列表尚未挂载（首屏数据刚到），下一帧再试；上限 6 帧
+      // 列表尚未挂载（首屏数据刚到），下一帧再试；上限 6 帧。
+      // 超时未挂载说明目录处于错误 / 空态，放弃恢复并清除待恢复标记，
+      // 否则卡住的 _pendingRestore 会让该分类永远无法保存新断点。
       if (_restoreWaits < 6) {
         _restoreWaits++;
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _tryRestoreCatalogProgress(),
         );
+        return;
       }
+      _pendingRestore = null;
       return;
     }
     final items = _visible;
-    if (items.isEmpty) return;
+    if (items.isEmpty) {
+      // 网格已挂载但可见条目为空（如全部被权限过滤）：无可恢复目标
+      _pendingRestore = null;
+      return;
+    }
     final ids = items.map((drama) => drama.id).toList();
     var index = ids.indexOf(progress.dramaId);
     var anchored = false;
@@ -742,6 +753,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _loadingMore = false;
         _error = error.toString();
       });
+      // 加载失败：若已有可见条目（或续页失败），放弃本次恢复，
+      // 避免卡住的 _pendingRestore 阻断用户滚动时的新断点保存；
+      // 初始加载即失败时保留标记，用户重试成功后仍能恢复定位。
+      if (more || _items.isNotEmpty) _pendingRestore = null;
     }
   }
 

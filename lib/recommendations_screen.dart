@@ -138,11 +138,15 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     if (progress == null) return;
     if (_loading || _more) return;
     if (_gridRowExtent <= 0 || _items.isEmpty) {
-      // 列表尚未挂载（首屏数据刚到），下一帧再试；上限 6 帧
+      // 列表尚未挂载（首屏数据刚到），下一帧再试；上限 6 帧。
+      // 超时仍未就绪说明推荐流处于错误 / 空态，放弃恢复并清除标记，
+      // 否则卡住的 _pendingRestore 会让该分类永远无法保存新断点。
       if (_restoreWaits < 6) {
         _restoreWaits++;
         WidgetsBinding.instance.addPostFrameCallback((_) => _tryRestore());
+        return;
       }
+      _pendingRestore = null;
       return;
     }
     final ids = _items.map((drama) => drama.id).toList();
@@ -225,6 +229,8 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
         _loading = _more = false;
         _error = error.toString();
       });
+      // 与目录一致：失败且已有可见条目时放弃恢复，避免卡住后续保存
+      if (more || _items.isNotEmpty) _pendingRestore = null;
     }
   }
 

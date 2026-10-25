@@ -391,7 +391,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                             _sideDanmakuControl(),
                             _bottomControls(
                               constraints: constraints,
-                              volume: state.volume,
+                              volume: widget.interactions.volume * 100,
                               duration: duration,
                               position: position,
                               buffered: buffered,
@@ -978,7 +978,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                             onPressed: () {
                               final next = volume == 0 ? 100.0 : 0.0;
                               setState(() => volume = next);
-                              unawaited(widget.player.setVolume(next));
+                              widget.interactions.setVolumeFraction(next / 100);
                             },
                             icon: Icon(
                               volume == 0
@@ -1009,7 +1009,9 @@ class _PlayerControlsState extends State<PlayerControls> {
                                   divisions: 20,
                                   onChanged: (value) {
                                     setState(() => volume = value);
-                                    unawaited(widget.player.setVolume(value));
+                                    widget.interactions.setVolumeFraction(
+                                      value / 100,
+                                    );
                                   },
                                 ),
                               ),

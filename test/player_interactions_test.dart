@@ -1,5 +1,8 @@
+import 'package:duanju_app/app_layout.dart';
 import 'package:duanju_app/player_interactions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -290,6 +293,111 @@ void main() {
       await tester.pump();
       expect(interactions.hudState.value, closeTo(0.4, 0.001));
       expect(interactions.brightness, closeTo(0.4, 0.001));
+    });
+  });
+
+  group('Android 设备音量映射', () {
+    /// 模拟系统媒体音量（15 档）；setCalls 记录 Dart 侧写入的归一化值。
+    /// 注意：tearDown 晚于 _verifyInvariants 执行，平台覆盖必须在测试体内
+    /// finally 恢复，否则触发 foundation 变量未清理断言
+    double systemVolume = 0.4;
+    final setCalls = <double>[];
+
+    VoidCallback mockSystemVolumeChannel() {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      systemVolume = 0.4;
+      setCalls.clear();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AppDevice.channel, (call) async {
+        switch (call.method) {
+          case 'getSystemVolume':
+            return {'volume': (systemVolume * 15).round(), 'max': 15};
+          case 'setSystemVolume':
+            final value = (call.arguments as Map)['volume'] as double;
+            setCalls.add(value);
+            systemVolume = value;
+            return true;
+        }
+        return null;
+      });
+      return () {
+        messenger.setMockMethodCallHandler(AppDevice.channel, null);
+        debugDefaultTargetPlatformOverride = null;
+      };
+    }
+
+    testWidgets('音量手势写入系统音量，播放器内部音量保持满值', (tester) async {
+      final restore = mockSystemVolumeChannel();
+      try {
+        final platform = ScriptedPlayer();
+        final player = Player(platformPlayer: platform);
+        await platform.playOrPause();
+        final interactions = await _mount(tester, player);
+        addTearDown(interactions.dispose);
+        await tester.pumpAndSettle();
+        expect(interactions.volume, closeTo(0.4, 0.001));
+        expect(player.state.volume, 100.0);
+
+        interactions.pointerDown(
+          _down(const Offset(350, 200)),
+          swipeEnabled: true,
+          width: 400,
+          height: 200,
+        );
+        // 首个移动仅判定分区（右侧=音量），HUD 显示起点音量 40%，不写入
+        interactions.pointerMove(_move(const Offset(350, 180)));
+        await tester.pump();
+        expect(interactions.hudState.type, SwipeAction.volume);
+        expect(interactions.hudState.value, closeTo(0.4, 0.001));
+        expect(setCalls, isEmpty);
+
+        // 下滑 20px：0.4 - 20/100 = 0.2，写入系统音量而非 libmpv 内部音量
+        interactions.pointerMove(_move(const Offset(350, 220)));
+        await tester.pump();
+        expect(interactions.volume, closeTo(0.2, 0.001));
+        expect(interactions.hudState.value, closeTo(0.2, 0.001));
+        expect(setCalls.last, closeTo(0.2, 0.001));
+        expect(player.state.volume, 100.0);
+
+        interactions.pointerUp(_up(const Offset(350, 220)));
+        // 烧掉 pointerUp 调度的 HUD 1 秒消失定时器
+        await tester.pump(const Duration(seconds: 2));
+      } finally {
+        restore();
+      }
+    });
+
+    testWidgets('静音与键盘音量键均走系统音量', (tester) async {
+      final restore = mockSystemVolumeChannel();
+      try {
+        final platform = ScriptedPlayer();
+        final player = Player(platformPlayer: platform);
+        await platform.playOrPause();
+        final interactions = await _mount(tester, player);
+        addTearDown(interactions.dispose);
+        await tester.pumpAndSettle();
+
+        interactions.toggleMute();
+        expect(interactions.volume, 0.0);
+        expect(setCalls.last, 0.0);
+
+        // 再次静音键恢复到静音前音量
+        interactions.toggleMute();
+        expect(interactions.volume, closeTo(0.4, 0.001));
+        expect(setCalls.last, closeTo(0.4, 0.001));
+
+        // 键盘 ↑ 相对当前系统音量 +5%
+        interactions.changeVolume(5);
+        expect(interactions.volume, closeTo(0.45, 0.001));
+        expect(setCalls.last, closeTo(0.45, 0.001));
+        // 播放器内部音量全程不被改动
+        expect(player.state.volume, 100.0);
+        // 烧掉 hint 反馈定时器
+        await tester.pump(const Duration(seconds: 3));
+      } finally {
+        restore();
+      }
     });
   });
 }

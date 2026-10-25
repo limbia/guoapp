@@ -107,6 +107,16 @@ class PlayerInteractions extends ChangeNotifier {
         notifyListeners();
       }
     }).catchError((_) {});
+    // Android：音量映射到系统媒体音量（AudioManager STREAM_MUSIC），与
+    // PiliNara 默认手势行为一致；读取失败保持 null，回退播放器内部音量
+    AppDevice.getSystemVolume().then((val) {
+      if (_disposed || val == null) return;
+      _deviceVolume = val;
+      // libmpv 内部音量保持满值，系统音量作为唯一衰减环节，
+      // 避免「内部 × 系统」双重衰减导致最大音量偏小
+      unawaited(player.setVolume(100));
+      notifyListeners();
+    }).catchError((_) {});
   }
 
   final Player player;
@@ -150,9 +160,13 @@ class PlayerInteractions extends ChangeNotifier {
   double _lastSeekDx = 0.0;
   bool _fullscreenTriggered = false;
 
-  /// 音量手势起点快照：media_kit 的 state.volume 经事件流异步回填，
-  /// 逐帧读取会滞后于 setVolume，导致 HUD 显示与实际音量漂移
-  double _initialVolume = 100;
+  /// Android 设备音量缓存（0..1）：非 Android 平台或系统音量不可用时为
+  /// null，此时音量回退到 libmpv 播放器内部音量
+  double? _deviceVolume;
+
+  /// 音量手势起点快照（0..1）：平台系统音量与 media_kit 的 state.volume
+  /// 均经异步回填，逐帧读取会滞后于实际设置，导致 HUD 显示漂移
+  double _initialVolume = 1.0;
 
   /// 亮度手势代数：手势结束后回读平台亮度时，若已开始新手势则丢弃
   int _brightnessGestureId = 0;
@@ -189,6 +203,28 @@ class PlayerInteractions extends ChangeNotifier {
     _brightness = value.clamp(0.01, 1.0);
     AppDevice.setBrightness(_brightness);
     _showHud(SwipeAction.brightness, _brightness);
+  }
+
+  /// 当前音量（0..1）：Android 取系统媒体音量，其他平台取播放器内部音量
+  double get volume => _deviceVolume ?? player.state.volume / 100;
+
+  /// 应用音量（0..1）：设备模式下写系统音量并刷新缓存，否则写 libmpv 内部音量
+  void _applyVolume(double value) {
+    final target = value.clamp(0.0, 1.0);
+    if (_deviceVolume != null) {
+      _deviceVolume = target;
+      notifyListeners();
+      unawaited(AppDevice.setSystemVolume(target));
+      return;
+    }
+    unawaited(player.setVolume(target * 100));
+  }
+
+  /// 音量面板直接设置（0..1）：面板自带百分比显示，不走 hint 反馈
+  void setVolumeFraction(double fraction) {
+    if (!available()) return;
+    _applyVolume(fraction);
+    if (fraction > 0) _unmutedVolume = fraction * 100;
   }
 
   void dismissBrightnessHud() {
@@ -477,8 +513,8 @@ class PlayerInteractions extends ChangeNotifier {
           if (!options.slideVolumeBrightness) return;
           _swipeAction = SwipeAction.volume;
           // 手势起点快照音量，移动中以此本地基准推算，避免异步流滞后
-          _initialVolume = player.state.volume;
-          _showHud(SwipeAction.volume, _initialVolume / 100);
+          _initialVolume = volume;
+          _showHud(SwipeAction.volume, _initialVolume);
         }
       }
       return;
@@ -514,12 +550,12 @@ class PlayerInteractions extends ChangeNotifier {
         _brightness = value;
         _showHud(SwipeAction.brightness, value);
       case SwipeAction.volume:
-        // 以手势起点音量为基准本地推算（0-100%）：>100% 对 libmpv
-        // 无效（volume-max 截断），实际音量不会变化，故不提供增强
+        // 以手势起点音量为基准本地推算（0..1），避免异步流滞后；
+        // Android 下映射系统媒体音量，其他平台映射 libmpv 内部音量
         final value =
-            (_initialVolume - dy / (_viewHeight * 0.5) * 100).clamp(0.0, 100.0);
-        unawaited(player.setVolume(value));
-        _showHud(SwipeAction.volume, value / 100);
+            (_initialVolume - dy / (_viewHeight * 0.5)).clamp(0.0, 1.0);
+        _applyVolume(value);
+        _showHud(SwipeAction.volume, value);
       case SwipeAction.fullscreen:
         // PiliNara 语义：中部上滑进入全屏、下滑退出全屏；触发后 latch，不再重复
         if (_fullscreenTriggered) break;
@@ -655,18 +691,19 @@ class PlayerInteractions extends ChangeNotifier {
 
   void changeVolume(double delta) {
     if (!available()) return;
-    final volume = (player.state.volume + delta).clamp(0.0, 100.0);
-    unawaited(player.setVolume(volume));
-    if (volume > 0) _unmutedVolume = volume;
-    hint(volume == 0 ? '已静音' : '音量 ${volume.round()}%');
+    final current = volume * 100;
+    final next = (current + delta).clamp(0.0, 100.0);
+    _applyVolume(next / 100);
+    if (next > 0) _unmutedVolume = next;
+    hint(next == 0 ? '已静音' : '音量 ${next.round()}%');
   }
 
   void toggleMute() {
     if (!available()) return;
-    final current = player.state.volume;
+    final current = volume * 100;
     if (current > 0) _unmutedVolume = current;
     final target = current > 0 ? 0.0 : _unmutedVolume;
-    unawaited(player.setVolume(target));
+    _applyVolume(target / 100);
     hint(target == 0 ? '已静音' : '音量 ${target.round()}%');
   }
 
